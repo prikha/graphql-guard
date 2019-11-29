@@ -36,25 +36,28 @@ Define a GraphQL schema:
 
 ```ruby
 # Define a type
-PostType = GraphQL::ObjectType.define do
+class PostType < GraphQL::Schema::Object
   name "Post"
 
-  field :id, !types.ID
-  field :title, types.String
+  field :id, ID, null: false
+  field :title, String, null: true
 end
 
 # Define a query
-QueryType = GraphQL::ObjectType.define do
+class QueryType < GraphQL::Schema::Object
   name "Query"
 
-  field :posts, !types[!PostType] do
-    argument :user_id, !types.ID
-    resolve ->(obj, args, ctx) { Post.where(user_id: args[:user_id]) }
+  field :posts, [PostType], null: false do
+    argument :user_id, ID, required: true
+  end
+
+  def posts(user_id:)
+    Post.where(user_id: user_id)
   end
 end
 
 # Define a schema
-Schema = GraphQL::Schema.define do
+class Schema < GraphQL::Schema
   query QueryType
 end
 
@@ -67,7 +70,7 @@ Schema.execute(query, variables: { user_id: 1 }, context: { current_user: curren
 Add `GraphQL::Guard` to your schema:
 
 <pre>
-Schema = GraphQL::Schema.define do
+class Schema < GraphQL::Schema
   query QueryType
   <b>use GraphQL::Guard.new</b>
 end
@@ -76,13 +79,12 @@ end
 Now you can define `guard` for a field, which will check permissions before resolving the field:
 
 <pre>
-QueryType = GraphQL::ObjectType.define do
+class QueryType < GraphQL::Schema::Object
   name "Query"
 
-  <b>field :posts</b>, !types[!PostType] do
-    argument :user_id, !types.ID
+  <b>field :posts</b>, [PostType], null: false do
+    argument :user_id, ID, required: true
     <b>guard ->(obj, args, ctx) {</b> args[:user_id] == ctx[:current_user].id <b>}</b>
-    ...
   end
 end
 </pre>
@@ -90,7 +92,7 @@ end
 You can also define `guard`, which will be executed for every `*` field in the type:
 
 <pre>
-PostType = GraphQL::ObjectType.define do
+class PostType < GraphQL::Schema::Object
   name "Post"
   <b>guard ->(obj, args, ctx) {</b> ctx[:current_user].admin? <b>}</b>
   ...
@@ -131,7 +133,7 @@ end
 Pass this object to `GraphQL::Guard`:
 
 <pre>
-Schema = GraphQL::Schema.define do
+class Schema < GraphQL::Schema
   query QueryType
   use GraphQL::Guard.new(<b>policy_object: GraphqlPolicy</b>)
 end
@@ -158,8 +160,8 @@ end
 class <b>GraphqlPolicy</b>
   RULES = {
     PostType => {
-      <b>'*': ->(obj, args, ctx) {</b> ctx[:current_user].admin? <b>}</b>,                           # <=== <b>4</b>
-      <b>title: ->(obj, args, ctx) {</b> ctx[:current_user].admin? <b>}</b>                          # <=== <b>2</b>
+      <b>'*': ->(obj, args, ctx) {</b> ctx[:current_user].admin? <b>}</b>,                    # <=== <b>4</b>
+      <b>title: ->(obj, args, ctx) {</b> ctx[:current_user].admin? <b>}</b>                   # <=== <b>2</b>
     }
   }
 
@@ -168,13 +170,13 @@ class <b>GraphqlPolicy</b>
   end
 end
 
-PostType = GraphQL::ObjectType.define do
+class PostType < GraphQL::Schema::Object
   name "Post"
-  <b>guard ->(obj, args, ctx) {</b> ctx[:current_user].admin? <b>}</b>                               # <=== <b>3</b>
-  <b>field :title</b>, !types.String, <b>guard: ->(obj, args, ctx) {</b> ctx[:current_user].admin? <b>}</b> # <=== <b>1</b>
+  <b>guard ->(obj, args, ctx) {</b> ctx[:current_user].admin? <b>}</b>                        # <=== <b>3</b>
+  <b>field :title</b>, String, <b>guard: ->(obj, args, ctx) {</b> ctx[:current_user].admin? <b>}</b> # <=== <b>1</b>
 end
 
-Schema = GraphQL::Schema.define do
+class Schema < GraphQL::Schema
   query QueryType
   use GraphQL::Guard.new(<b>policy_object: GraphqlPolicy</b>)
 end
@@ -202,7 +204,7 @@ class <b>Ability</b>
 end
 
 # Use the ability in your guard
-PostType = GraphQL::ObjectType.define do
+class PostType < GraphQL::Schema::Object
   name "Post"
   guard ->(post, args, ctx) { <b>ctx[:current_ability].can?(:read, post)</b> }
   ...
@@ -223,7 +225,7 @@ class <b>PostPolicy</b> < ApplicationPolicy
 end
 
 # Use the ability in your guard
-PostType = GraphQL::ObjectType.define do
+class PostType < GraphQL::Schema::Object
   name "Post"
   guard ->(post, args, ctx) { <b>PostPolicy.new(ctx[:current_user], post).show?</b> }
   ...
@@ -239,7 +241,7 @@ By default `GraphQL::Guard` raises a `GraphQL::Guard::NotAuthorizedError` except
 You can change this behavior, by passing custom `not_authorized` lambda. For example:
 
 <pre>
-SchemaWithErrors = GraphQL::Schema.define do
+class SchemaWithErrors < GraphQL::Schema
   query QueryType
   use GraphQL::Guard.new(
     # By default it raises an error
@@ -291,7 +293,7 @@ class <b>GraphqlPolicy</b>
   end
 end
 
-Schema = GraphQL::Schema.define do
+class Schema < GraphQL::Schema
   query QueryType
   mutation MutationType
 
@@ -310,11 +312,11 @@ end
 It's possible to hide fields from being introspectable and accessible based on the context. For example:
 
 <pre>
-PostType = GraphQL::ObjectType.define do
+class PostType < GraphQL::Schema::Object
   name "Post"
 
-  field :id, !types.ID
-  field :title, types.String do
+  field :id, ID, null: false
+  field :title, String, null: true do
     # The field "title" is accessible only for beta testers
     <b>mask ->(ctx) {</b> ctx[:current_user].beta_tester? <b>}</b>
   end
@@ -343,9 +345,9 @@ It's possible to test fields with `guard` in isolation:
 
 <pre>
 # Your type
-QueryType = GraphQL::ObjectType.define do
+class QueryType < GraphQL::Schema::Object
   name "Query"
-  <b>field :posts</b>, !types[!PostType], <b>guard ->(obj, args, ctx) {</b> ... <b>}</b>
+  <b>field :posts</b>, [PostType], null: false, <b>guard ->(obj, args, ctx) {</b> ... <b>}</b>
 end
 
 # Your test
@@ -361,9 +363,9 @@ If you would like to test your fields with policy objects:
 
 <pre>
 # Your type
-QueryType = GraphQL::ObjectType.define do
+class QueryType < GraphQL::Schema::Object
   name "Query"
-  <b>field :posts</b>, !types[!PostType]
+  <b>field :posts</b>, [PostType], null: false
 end
 
 # Your policy object
