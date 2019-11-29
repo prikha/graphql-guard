@@ -67,11 +67,20 @@ RSpec.describe GraphQL::Guard do
 
       result = Inline::Schema.execute(query, variables: {'userId' => user.id}, context: {current_user: user})
 
-      expect(result['errors']).to include({
-        "message" => "Field 'postsWithMask' doesn't exist on type 'Query'",
-        "locations" => [{"line" => 1, "column" => 23}],
-        "fields" => ["query", "postsWithMask"]
-      })
+      if GraphQL::VERSION.to_f >= 1.9
+        expect(result['errors']).to include({
+          "message" => "Field 'postsWithMask' doesn't exist on type 'Query'",
+          "locations" => [{"line" => 1, "column" => 23}],
+          "path" => ["query", "postsWithMask"],
+          "extensions" => {"code" => "undefinedField", "typeName" => "Query", "fieldName" => "postsWithMask"}
+        })
+      else
+        expect(result['errors']).to include({
+          "message" => "Field 'postsWithMask' doesn't exist on type 'Query'",
+          "locations" => [{"line" => 1, "column" => 23}],
+          "fields" => ["query", "postsWithMask"]
+        })
+      end
     end
   end
 
